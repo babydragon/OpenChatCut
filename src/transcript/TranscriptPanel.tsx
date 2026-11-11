@@ -126,6 +126,18 @@ export function TranscriptPanel({
     } catch { /* hook holds error */ }
   };
 
+  // Re-running replaces the transcript and resets every edit keyed to the old
+  // words (deletions, silence caps, play order); cloud engines bill the audio
+  // again, so this never fires without an explicit confirmation.
+  const retranscribe = () => {
+    if (!trackHasWords) return;
+    const warning = localProvider
+      ? t('重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑。确认继续吗？')
+      : t('重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑；云端引擎会按音频时长重新计费。确认继续吗？');
+    if (!window.confirm(warning)) return;
+    void transcribeTrack();
+  };
+
   const sectionsToShow = useMemo(() => {
     if (showAllSections || clips.length <= MANY_CLIPS) return clips;
     // dense mode: only the focused clip (fallback first)
@@ -189,6 +201,13 @@ export function TranscriptPanel({
         >
           <Icon name="captions" size={13} />{t('字幕样式')}
         </button>
+        {trackHasWords && (
+          <button type="button" className="cc-tx-btn" disabled={busy} onClick={retranscribe}>
+            {busy
+              ? <><span className="cc-asset-transcribe-spinner" aria-hidden />{t('转写中…')}</>
+              : <><Icon name="redo" size={13} />{t('重新转写')}</>}
+          </button>
+        )}
         <span className="cc-tx-spacer" />
         {pauseOpen && (
           <div className="cc-tx-popover">
@@ -207,6 +226,13 @@ export function TranscriptPanel({
           </div>
         )}
       </div>
+
+      {busy && (
+        <div className="cc-tx-progress" role="status" aria-live="polite">
+          <span className="cc-asset-transcribe-spinner" aria-hidden />
+          <span>{progressNote ?? t('转写中…')}</span>
+        </div>
+      )}
 
       {/* Track chips — alias · name, never bare UUID */}
       <div className="cc-tx-tracks" role="tablist" aria-label={t('转写轨道')}>
@@ -335,9 +361,6 @@ export function TranscriptPanel({
                       ›
                     </button>
                   </div>
-                  <button type="button" className="cc-tx-btn sm" disabled={busy} onClick={() => void transcribeTrack()}>
-                    {busy ? '…' : t('重新转写')}
-                  </button>
                 </div>
                 {clips.length > MANY_CLIPS && (
                   <label className="cc-tx-nav-mode">

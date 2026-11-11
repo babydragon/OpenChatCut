@@ -9,6 +9,7 @@ import type { EditorCommands } from '../editor/store';
 import { captionsOnTrack, defaultTrackId, trackKind, type MediaAsset, type ProjectDoc, type TimelineState, type TrackId } from '../editor/types';
 import type { Tpl } from '../types';
 import type { t as translate } from '../i18n/locale';
+import { t } from '../i18n/locale';
 import { duplicateAssetName } from './assetMenuSelection';
 import { classifyExternalFile, parseDroppedCaptions } from './externalFileDrop';
 import { createImportContentIdentityHooks } from './importContentIdentity';
@@ -73,14 +74,19 @@ function finishTranscription(job: TranscribeJob, projectId: string, commands: Ed
   if (!currentAsset || sourceRevisionOf(currentAsset) !== job.sourceRevision
     || !currentJob || currentJob.generation !== job.generation
     || currentJob.sourceRevision !== job.sourceRevision) return;
-  if (job.status === 'done' && job.words?.length) {
+  if (job.status === 'done') {
+    // A finished run may legitimately return zero words (silence, music-only
+    // ambience). Mark it done and clear the old transcript anyway — leaving the
+    // asset "running" made the pool spinner hang forever and re-enqueued the
+    // job on every reload.
+    const words = job.words ?? [];
     commands.setAssetTranscription(job.assetId, {
-      transcript: job.words,
+      transcript: words,
       transcribeStatus: 'done',
       transcribeError: undefined,
     });
     for (const itemId of untranscribedTimelineItemIdsForRevision(stateRef.current.items, job.sourceRevision, replaceExisting)) {
-      commands.setItemTranscript(itemId, job.words);
+      commands.setItemTranscript(itemId, words);
     }
   } else if (job.status === 'failed') {
     commands.setAssetTranscription(job.assetId, {
@@ -280,16 +286,23 @@ function useAssetTranscription(options: EditorMediaIngestOptions): StartAssetTra
   const { assets, commands, projectId, stateRef, docRef } = options;
   const start = useCallback<StartAssetTranscription>((asset, asrPath, markRunning = true, replaceExisting = false) => {
     if (!shouldTranscribe(asset.kind)) return;
+    // A pool asset that already carries words is being re-transcribed: the
+    // in-memory job guard must not silently skip it, and every clip on the
+    // timeline must take the new words instead of keeping the old ones.
+    const current = docRef.current.assets.find((candidate) => candidate.id === asset.id);
+    const replace = replaceExisting || Boolean(current?.transcript?.length);
     if (markRunning) {
       commands.setAssetTranscription(asset.id, {
         transcribeStatus: 'running',
         transcribeError: undefined,
       });
     }
+    if (replace) showAppToast(t('已开始重新转写…'));
     enqueueTranscription(projectId, asset, {
       asrPath,
+      force: replace,
       getCurrentAsset: () => docRef.current.assets.find((candidate) => candidate.id === asset.id),
-      onComplete: (job) => finishTranscription(job, projectId, commands, stateRef, docRef, replaceExisting),
+      onComplete: (job) => finishTranscription(job, projectId, commands, stateRef, docRef, replace),
     });
   }, [commands, docRef, projectId, stateRef]);
   useEffect(() => {

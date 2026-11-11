@@ -98,4 +98,7 @@ export default {
   '已完成 {ok}/{total} 段；失败：{fails}': 'Completed {ok}/{total} clips; failed: {fails}',
   ' · 已失效': ' · expired',
   ' · 转写已失效，仅供查看': ' · transcription expired, view only',
+  '重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑。确认继续吗？': 'Re-transcribing replaces the current transcript and clears edits keyed to the old words (deleted words, pause compression, play order). Continue?',
+  '重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑；云端引擎会按音频时长重新计费。确认继续吗？': 'Re-transcribing replaces the current transcript, clears edits keyed to the old words (deleted words, pause compression, play order), and the cloud engine bills the audio duration again. Continue?',
+  '已开始重新转写…': 'Re-transcription started…',
 } as Record<string, string>;

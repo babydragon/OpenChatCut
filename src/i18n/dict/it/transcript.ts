@@ -53,4 +53,7 @@ export default {
     'Il modello di trascrizione locale {model} ha esaurito la memoria del motore del browser (wasm). In Impostazioni → Modelli locali → Trascrizione locale scegli un modello più piccolo (Base / Small), oppure attiva «Accelerazione inferenza nativa desktop» e scarica questo modello, così lo esegue whisper.cpp, che non ha questo limite.',
   '本地转写模型 {model} 超出了浏览器引擎（wasm）的内存上限。请到 设置 → 本地模型 → 本地转写 改选更小的模型（Base / Small），或改用桌面版，由没有此限制的 whisper.cpp 原生运行。':
     'Il modello di trascrizione locale {model} ha esaurito la memoria del motore del browser (wasm). In Impostazioni → Modelli locali → Trascrizione locale scegli un modello più piccolo (Base / Small), oppure usa l’app desktop, che lo esegue in modo nativo con whisper.cpp senza questo limite.',
+  '重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑。确认继续吗？': 'La ritrascrizione sostituisce il testo attuale e cancella le modifiche legate alle vecchie parole (parole eliminate, compressione delle pause, ordine dei segmenti). Continuare?',
+  '重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑；云端引擎会按音频时长重新计费。确认继续吗？': 'La ritrascrizione sostituisce il testo attuale, cancella le modifiche legate alle vecchie parole (parole eliminate, compressione delle pause, ordine dei segmenti) e il motore cloud addebita di nuovo la durata audio. Continuare?',
+  '已开始重新转写…': 'Ritrascrizione avviata…',
 } as Record<string, string>;

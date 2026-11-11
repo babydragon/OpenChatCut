@@ -3,6 +3,7 @@ import { useEffect, useRef, type CSSProperties, type RefObject } from 'react';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import type { MusicAnalysisCardState } from '../audio/intelligence/useMusicAnalysisCards';
 import { useT } from '../i18n/locale';
+import { preferredTranscriptionProvider } from '../transcript/provider';
 import { theme } from '../theme';
 import { AssetExportButton } from './AssetExportButton';
 import { folderPath } from './mediaPoolFormat';
@@ -184,7 +185,16 @@ function AssetMenuActions(props: AssetMenuPortalProps & { asset: MediaAsset }) {
   return (
     <>
       {!props.missing && <AssetExportButton asset={asset} fps={props.fps} onError={props.onError} onComplete={props.onClose} />}
-      {props.onTranscribe && <button type="button" onClick={props.onTranscribe}>{asset.transcribeStatus === 'failed' ? t('重新转写') : t('转写')}</button>}
+      {props.onTranscribe && <button type="button" onClick={() => {
+        const hasWords = (asset.transcript?.length ?? 0) > 0;
+        if (hasWords) {
+          const warning = preferredTranscriptionProvider() === 'local'
+            ? t('重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑。确认继续吗？')
+            : t('重新转写会替换现有文字稿，并清空删词、停顿压缩、语段重排等基于旧词的编辑；云端引擎会按音频时长重新计费。确认继续吗？');
+          if (!window.confirm(warning)) return;
+        }
+        props.onTranscribe?.();
+      }}>{asset.transcribeStatus === 'failed' || (asset.transcript?.length ?? 0) > 0 ? t('重新转写') : t('转写')}</button>}
       {props.onViewTranscript && <button type="button" onClick={props.onViewTranscript}>{t('查看文字稿')}</button>}
       <button type="button" onClick={props.onFavorite}>{asset.favorite ? t('取消收藏') : t('收藏')}</button>
       <button type="button" onClick={props.onRename}>{t('重命名')}</button>

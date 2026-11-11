@@ -446,7 +446,9 @@ export function MediaPoolPanel({
           close: closeAssetMenu, setError, onSetFavorite, onSetAssetsFavorite,
           rename: renameAssets, rememberFocus: modalFocus.remember, startRelink,
           requestRemove: requestRemoveAssets, setConfirmDeleteId, remove: removeAssets,
-          transcribe: (targets) => targets.filter((asset) => (asset.kind === 'audio' || asset.kind === 'video') && asset.transcribeStatus !== 'running' && asset.transcribeStatus !== 'done').forEach((asset) => onTranscribe(asset)),
+          // Done assets are included: the menu offers 重新转写 for them, and the
+          // pool hook forces a fresh run when a transcript already exists.
+          transcribe: (targets) => targets.filter((asset) => (asset.kind === 'audio' || asset.kind === 'video') && asset.transcribeStatus !== 'running').forEach((asset) => onTranscribe(asset)),
           viewTranscript: (asset) => openTranscriptViewer(asset.id),
           move: onMoveAssets, addToTimeline: onAddAssetsToTimeline, addAsset: onAddAsset,
           addToChat: onAddAssetsToChat,

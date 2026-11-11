@@ -63,6 +63,8 @@ const POLL_MS = 1000;
 
 interface EnqueueOptions {
   languageCode?: string;
+  /** Re-run even when a finished job for this source revision is already in memory. */
+  force?: boolean;
   /** Fired once on the terminal state so a real-store writer can persist the result
    *  onto the asset (MediaAsset.transcript / transcribeStatus). The agent path omits
    *  this and reads the terminal state via track_progress instead. */
@@ -132,7 +134,7 @@ export function enqueueTranscription(
   const sourceRevision = sourceRevisionOf(asset);
   const logicalJobKey = jobKey(projectId, asset.id);
   const prior = jobs.get(logicalJobKey);
-  if (prior && prior.sourceRevision === sourceRevision && prior.status !== 'failed') return;
+  if (prior && prior.sourceRevision === sourceRevision && prior.status !== 'failed' && !opts.force) return;
 
   const provider = preferredTranscriptionProvider();
   const languageCode = preferredTranscriptionLanguage();
