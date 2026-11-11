@@ -148,7 +148,9 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
             const body = error instanceof AgentSessionClearBlockedError
               ? { error: clientMessage, code: error.code, run: error.run }
               : { error: clientMessage };
-            sendProjectStoreJson(res, 400, body);
+            // A refused body size is a transport limit, not a malformed request:
+            // 413 lets the client report it instead of guessing "bad request".
+            sendProjectStoreJson(res, /request body too large/.test(message) ? 413 : 400, body);
           }
         }
       });

@@ -347,6 +347,11 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
     if (isAuthError(error)) {
       throw new Error('共享工程库只读（编辑器会话失效），修改未同步');
     }
+    // Size refusals must not be swallowed into the offline fallback: the local
+    // copy would then be overwritten by the server copy on the next read.
+    if (isPayloadTooLarge(error)) {
+      throw new Error('数据超过共享工程库单次写入上限（64 MB），修改未同步');
+    }
     await disableRemote();
     await localSet(key, value);
     await markPendingKey(key);
@@ -433,7 +438,17 @@ export function kvRemoteMode(): 'remote' | 'local' {
 function isAuthError(error: unknown): error is Error & { status: number } {
   if (!(error instanceof Error)) return false;
   const status = Reflect.get(error, 'status');
-  return typeof status === 'number' && status >= 400 && status < 500;
+  // Only a rejected credential means the editor session is gone. Treating every
+  // 4xx as one turned a "request body too large" (413) into
+  // "共享工程库只读（编辑器会话失效）" and hid the real cause.
+  return status === 401 || status === 403;
+}
+
+/** A write the store refused for its size, not for its credential. */
+function isPayloadTooLarge(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const status = Reflect.get(error, 'status');
+  return status === 413 || /body too large/i.test(error.message);
 }
 
 export async function kvKeys(): Promise<string[]> {

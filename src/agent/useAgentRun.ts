@@ -87,7 +87,17 @@ export async function commitPersistentOperations(
   await turn.persistentSnapshot;
   if (turn.abortController.signal.aborted) return false;
   if (turn.persistentSaveError) {
-    showRunError(turn, '无法创建修改前版本，Agent 改动未应用。请检查本地存储后重试。');
+    // Carry the storage layer's own reason: "请检查本地存储" alone left a
+    // 64 MiB request cap indistinguishable from a corrupt store.
+    const reason = turn.persistentSaveError instanceof Error
+      ? turn.persistentSaveError.message.trim()
+      : '';
+    showRunError(
+      turn,
+      reason
+        ? `无法创建修改前版本，本次 Agent 改动未完整应用：${reason}`
+        : '无法创建修改前版本，Agent 改动未应用。请检查本地存储后重试。',
+    );
     return false;
   }
   turn.state.llmProviderRef.current = PROVIDER;

@@ -7,6 +7,14 @@ import type { ProjectDoc } from '../editor/types';
 
 const versionsKey = (projectId: string) => `versions:${projectId}`;
 export const MAX_AUTOMATIC_VERSIONS = 30;
+/** One project's whole snapshot list is stored as a single entry, so it travels
+ *  as ONE request body (the project-store HTTP transport caps a body at 64 MiB).
+ *  A 4 MB document × 30 snapshots is ~120 MB of JSON: the count cap alone cannot
+ *  keep the list writable, and every later write fails — which surfaced as
+ *  "无法创建修改前版本，Agent 改动未应用" on every agent run. Keep the serialized
+ *  list under this budget by dropping the OLDEST automatic snapshots; manual
+ *  snapshots are never dropped. */
+export const MAX_VERSION_PAYLOAD_BYTES = 48 * 1024 * 1024;
 const mutationQueues = new Map<string, Promise<unknown>>();
 
 export interface ProjectVersion {
@@ -101,10 +109,44 @@ async function persistVersion(
     next.filter((item) => item.automatic).slice(0, MAX_AUTOMATIC_VERSIONS).map((item) => item.id),
   );
   await idbSet(versionsKey(projectId), withPreservedRecords(
-    next.filter((item) => !item.automatic || retainedAutomaticIds.has(item.id)),
+    fitPayloadBudget(
+      next.filter((item) => !item.automatic || retainedAutomaticIds.has(item.id)),
+      opaque,
+    ),
     opaque,
   ));
   return version;
+}
+
+function utf8Bytes(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/** Serialized size of one record as `JSON.stringify` writes it, plus its separator. */
+function recordBytes(record: unknown): number {
+  return utf8Bytes(JSON.stringify(record)) + 1;
+}
+
+/** Drop the oldest automatic snapshots until the entry fits the transport budget.
+ *  Index 0 is the snapshot just written; manual snapshots are always kept, so a
+ *  project whose manual snapshots alone exceed the budget still writes (and the
+ *  transport reports the real reason instead of silently losing them). */
+function fitPayloadBudget(
+  versions: readonly ProjectVersion[],
+  opaque: readonly unknown[],
+): ProjectVersion[] {
+  const kept = [...versions];
+  // Measured once per record: re-serializing inside the loop would be quadratic
+  // on a list that is already tens of megabytes.
+  const sizes = kept.map(recordBytes);
+  let bytes = 1 + opaque.reduce<number>((total, record) => total + recordBytes(record), 0);
+  for (const size of sizes) bytes += size;
+  for (let index = kept.length - 1; index > 0 && bytes > MAX_VERSION_PAYLOAD_BYTES; index -= 1) {
+    if (!kept[index].automatic) continue;
+    bytes -= sizes[index];
+    kept.splice(index, 1);
+  }
+  return kept;
 }
 
 /** Save the current project document as a named snapshot (pre-insert, latest first).*/

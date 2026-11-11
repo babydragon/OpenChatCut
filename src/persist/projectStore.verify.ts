@@ -23,7 +23,9 @@ import { pendingAutosaveAfterObservation, recoverFailedAutosave } from './autosa
 import { kvKeys, kvSet } from './sharedKv';
 import {
   MAX_AUTOMATIC_VERSIONS,
+  MAX_VERSION_PAYLOAD_BYTES,
   listVersions,
+  loadRawVersions,
   saveAutomaticVersion,
   saveVersion,
 } from './versionStore';
@@ -132,6 +134,41 @@ assert.equal(
   1,
   'only one concurrent automatic snapshot is retained for an identical document',
 );
+
+// Byte budget: a project's whole snapshot list is one request body, and the
+// project-store transport refuses bodies over 64 MiB. Thirty 4 MB snapshots used
+// to overflow that, after which EVERY version write failed and each agent run
+// reported "无法创建修改前版本，Agent 改动未应用".
+{
+  const bigProjectId = 'version-payload-budget-check';
+  // 20 snapshots of ~1/12 of the budget each: the list must shrink to fit.
+  const filler = 'x'.repeat(Math.ceil(MAX_VERSION_PAYLOAD_BYTES / 12));
+  const bigDoc = (name: string): ProjectDoc => ({
+    ...versionDoc(name),
+    filler,
+  } as ProjectDoc);
+  await saveVersion(bigProjectId, 'Manual big', bigDoc('Manual big'));
+  for (let index = 1; index <= 20; index += 1) {
+    await saveAutomaticVersion(bigProjectId, `Big ${index}`, bigDoc(`Big ${index}`));
+  }
+  const raw = await loadRawVersions(bigProjectId);
+  const bytes = new TextEncoder().encode(JSON.stringify(raw)).length;
+  assert.ok(
+    bytes <= MAX_VERSION_PAYLOAD_BYTES,
+    `snapshot entry must stay writable (${bytes} > ${MAX_VERSION_PAYLOAD_BYTES})`,
+  );
+  const kept = await listVersions(bigProjectId);
+  assert.equal(kept[0]?.name, 'Big 20', 'the snapshot just written is always kept');
+  assert.equal(
+    kept.filter((version) => !version.automatic).length,
+    1,
+    'manual snapshots are never dropped to fit the budget',
+  );
+  assert.ok(
+    kept.filter((version) => version.automatic).length < 20,
+    'oldest automatic snapshots are dropped once the entry exceeds the budget',
+  );
+}
 
 // SaveCoordinator captures immutable snapshots, serializes a project's writes,
 // and flushes through work that was enqueued while an older revision was active.
