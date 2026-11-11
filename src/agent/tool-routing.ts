@@ -55,7 +55,7 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
   },
   {
     requestContext: [
-      ['assemblyai', 'local', 'openai', 'mistral', 'deepgram', 'groq', 'elevenlabs', 'cartesia'],
+      ['assemblyai', 'local', 'openai', 'mistral', 'deepgram', 'groq', 'elevenlabs', 'cartesia', 'volcengine', 'doubao', '火山'],
       ['transcribe', 'transcription', 'speech-to-text', 'stt', 'asr', '转写', '语音识别'],
     ],
     tools: ['transcribe_track', 'read_transcript', 'find_transcript'],

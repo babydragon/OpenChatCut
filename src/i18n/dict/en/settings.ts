@@ -606,4 +606,9 @@ export default {
   '桌面端点击“选择目录”；也可手动输入绝对路径（可用 ~/ 开头）。清除后回到默认目录。': 'On desktop, click "Choose folder"; you can also type an absolute path (~/ accepted). Clear it to return to the default folder.',
   '已保存 · 重启应用后新的工程存储目录才会生效': 'Saved · the new project storage folder takes effect after a restart',
   '该模型不在内置目录，以上数值为估算（上下文 {context} / 输出 {output}）。若与实际不符，点「展开」手动修改。': 'This model is not in the built-in catalog, so these values are estimates (context {context} / output {output}). If they do not match the real model, expand and adjust them manually.',
+  '火山引擎 豆包（云端）': 'Volcengine Doubao (cloud)',
+  '火山引擎 豆包': 'Volcengine Doubao',
+  '资源 ID': 'Resource ID',
+  '默认 volc.seedasr.sauc.duration': 'Default volc.seedasr.sauc.duration',
+  '录音文件识别 2.0 只接受公网音频链接；本机素材改走流式 2.0 的 nostream 通道（1 元/小时），无需把音频上传到公网。': 'The file-transcription 2.0 API only accepts public audio URLs; local media uses the streaming 2.0 nostream channel (¥1/hour) instead, so no audio is uploaded to the public internet.',
 } as Record<string, string>;

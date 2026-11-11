@@ -202,6 +202,7 @@ export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
     { value: 'groq', label: 'Groq（云端）' },
     { value: 'elevenlabs', label: 'ElevenLabs Scribe（云端）' },
     { value: 'cartesia', label: 'Cartesia（云端）' },
+    { value: 'volcengine', label: '火山引擎 豆包（云端）' },
   ], 'AssemblyAI（默认）'),
   vendors: [
     transcriptionPage('assemblyai', 'assemblyai', 'AssemblyAI', [secret('ASSEMBLYAI_API_KEY', 'API Key')]),
@@ -233,6 +234,10 @@ export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
       secret('CARTESIA_API_KEY', 'API Key'),
       modelText('CARTESIA_TRANSCRIPTION_MODEL', '转写模型', 'ink-whisper'),
     ]),
+    transcriptionPage('volcengine', 'volcengine', '火山引擎 豆包', [
+      secret('VOLCENGINE_ASR_API_KEY', 'API Key'),
+      text('VOLCENGINE_ASR_RESOURCE_ID', '资源 ID', '默认 volc.seedasr.sauc.duration'),
+    ], '录音文件识别 2.0 只接受公网音频链接；本机素材改走流式 2.0 的 nostream 通道（1 元/小时），无需把音频上传到公网。'),
   ],
 };
 
@@ -255,6 +260,7 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   local: [[]],
   deepgram: [['DEEPGRAM_API_KEY']],
   groq: [['GROQ_API_KEY']],
+  volcengine: [['VOLCENGINE_ASR_API_KEY'], ['VOLCENGINE_ASR_APP_ID', 'VOLCENGINE_ASR_ACCESS_TOKEN']],
   seedance2: [['SEEDANCE_API_KEY']],
   kling: [['KLING_API_KEY']],
   hailuo: [['MINIMAX_API_KEY']],

@@ -40,6 +40,10 @@ export function transcriptionOptions(): TranscriptionOptions {
     get elevenModel() { return getKey('ELEVENLABS_TRANSCRIPTION_MODEL') || 'scribe_v2'; },
     get cartesiaApiKey() { return getKey('CARTESIA_API_KEY'); },
     get cartesiaModel() { return getKey('CARTESIA_TRANSCRIPTION_MODEL') || 'ink-whisper'; },
+    get volcengineApiKey() { return getKey('VOLCENGINE_ASR_API_KEY'); },
+    get volcengineAppId() { return getKey('VOLCENGINE_ASR_APP_ID'); },
+    get volcengineAccessToken() { return getKey('VOLCENGINE_ASR_ACCESS_TOKEN'); },
+    get volcengineResourceId() { return getKey('VOLCENGINE_ASR_RESOURCE_ID') || 'volc.seedasr.sauc.duration'; },
     get language() { return getKey('TRANSCRIPTION_LANGUAGE') || 'zh'; },
     get diarization() { return getKey('TRANSCRIPTION_DIARIZATION') !== '0'; },
   };

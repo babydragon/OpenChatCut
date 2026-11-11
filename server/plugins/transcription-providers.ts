@@ -6,6 +6,7 @@ import { createGroq } from '@ai-sdk/groq';
 import { createOpenAI } from '@ai-sdk/openai';
 
 import { versionedApiBaseUrl } from './media-provider-config.ts';
+import { isVolcengineConfigured, transcribeWithVolcengine } from './volcengine-asr.ts';
 
 import type {
   CloudTranscriptionProvider,
@@ -39,6 +40,17 @@ export function assertTranscriptionProviderConfigured(
   options: TranscriptionOptions,
   provider: CloudTranscriptionProvider,
 ): void {
+  if (provider === 'volcengine') {
+    if (!isVolcengineConfigured({
+      apiKey: options.volcengineApiKey,
+      appId: options.volcengineAppId,
+      accessToken: options.volcengineAccessToken,
+      resourceId: options.volcengineResourceId,
+    })) {
+      throw new TranscriptionConfigurationError('火山引擎 API Key 未配置');
+    }
+    return;
+  }
   requireProviderKey(options, provider);
 }
 
@@ -162,6 +174,20 @@ export async function transcribeCloudAudio(
   options: TranscriptionOptions,
   request: CloudTranscriptionRequest,
 ): Promise<NormalizedTranscriptResult> {
+  // Volcengine is not an AI-SDK transcription provider: it speaks its own
+  // WebSocket protocol and returns word-level timestamps directly.
+  if (request.provider === 'volcengine') {
+    return transcribeWithVolcengine(request.audio, {
+      language: request.language,
+      diarize: request.diarize,
+      config: {
+        apiKey: options.volcengineApiKey,
+        appId: options.volcengineAppId,
+        accessToken: options.volcengineAccessToken,
+        resourceId: options.volcengineResourceId,
+      },
+    });
+  }
   const result = await runProvider(options, request);
   const raw = (result.responses[0] as unknown as { body?: unknown } | undefined)?.body;
   const providerWords = normalizedRawWords(request.provider, raw);

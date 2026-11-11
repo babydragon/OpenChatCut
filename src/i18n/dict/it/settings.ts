@@ -443,6 +443,11 @@ const overrides: Record<string, string> = {
   '默认工程位置': 'Posizione predefinita dei progetti',
   '新建工程、历史版本和应用生成的素材保存在这里。桌面端从外部拖入的文件和文件夹保留在原位置，工程只建立引用；浏览器运行时会上传托管副本。修改后重启应用生效。': 'Qui vengono salvati i nuovi progetti, la cronologia delle versioni e i media generati dall’app. Sul desktop i file e le cartelle trascinati dall’esterno restano nella posizione originale e il progetto crea solo un riferimento; nel browser viene caricata una copia gestita. La modifica si applica dopo il riavvio.',
   '未配置时素材只存本机。配置后：每次上传同步写入 R2（桶保持私有，读取经本地服务回源，src 路径不变）；本机缺文件时自动从云端取回。改动即时生效。R2 控制台建桶 → R2 API Token（Object Read & Write）即可拿到下面四个值。': 'Senza configurazione i media restano solo sul computer. Dopo la configurazione ogni caricamento viene scritto anche su R2; il bucket resta privato, la lettura passa dal servizio locale e il percorso src non cambia. Se manca un file locale, viene recuperato automaticamente dal cloud. Le modifiche hanno effetto immediato. Crea un bucket nella console R2 e un token API R2 con Object Read & Write per ottenere i quattro valori seguenti.',
+  '火山引擎 豆包（云端）': 'Volcengine Doubao (cloud)',
+  '火山引擎 豆包': 'Volcengine Doubao',
+  '资源 ID': 'ID risorsa',
+  '默认 volc.seedasr.sauc.duration': 'Predefinito volc.seedasr.sauc.duration',
+  '录音文件识别 2.0 只接受公网音频链接；本机素材改走流式 2.0 的 nostream 通道（1 元/小时），无需把音频上传到公网。': "L'API di trascrizione file 2.0 accetta solo URL audio pubblici; i media locali passano dal canale streaming 2.0 nostream (¥1/ora), quindi nessun audio viene caricato su Internet.",
 };
 
 export default overrides;

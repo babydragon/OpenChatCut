@@ -113,6 +113,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Groq', arg: 'groq', argKey: 'provider', need: [['GROQ_API_KEY']] },
     { label: 'ElevenLabs Scribe', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
     { label: 'Cartesia', arg: 'cartesia', argKey: 'provider', need: [['CARTESIA_API_KEY']] },
+    { label: '火山引擎 豆包', arg: 'volcengine', argKey: 'provider', need: [['VOLCENGINE_ASR_API_KEY'], ['VOLCENGINE_ASR_APP_ID', 'VOLCENGINE_ASR_ACCESS_TOKEN']] },
   ],
 };
 

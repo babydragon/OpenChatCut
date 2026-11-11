@@ -9,10 +9,12 @@ import {
   transcribeCloudAudio,
 } from './transcription-providers.ts';
 import {
+  CLOUD_TRANSCRIPTION_PROVIDERS,
   isCloudTranscriptionProvider,
   type CloudTranscriptionProvider,
   type TranscriptionOptions,
 } from './transcription-types.ts';
+import { VolcengineAsrError } from './volcengine-asr.ts';
 
 export const MAX_TRANSCRIPTION_BYTES = 100 * 1024 * 1024;
 
@@ -74,7 +76,7 @@ async function readAudio(req: IncomingMessage): Promise<Buffer> {
 function requestProvider(url: URL): CloudTranscriptionProvider {
   const provider = (url.searchParams.get('provider') ?? '').trim();
   if (!isCloudTranscriptionProvider(provider)) {
-    throw new TranscriptionRequestError(400, 'provider must be openai, deepgram, groq, elevenlabs, or cartesia');
+    throw new TranscriptionRequestError(400, `provider must be ${CLOUD_TRANSCRIPTION_PROVIDERS.join(', ')}`);
   }
   return provider;
 }
@@ -128,6 +130,7 @@ async function handleTranscription(
     logger.error(`[api:transcribe] ${message}`);
     if (error instanceof TranscriptionRequestError) sendJson(res, error.status, { error: message });
     else if (error instanceof TranscriptionConfigurationError) sendJson(res, 400, { error: message });
+    else if (error instanceof VolcengineAsrError) sendJson(res, 400, { error: message });
     else sendJson(res, 502, { error: 'transcription provider request failed — check the provider settings and audio format' });
   }
 }
