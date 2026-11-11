@@ -65,6 +65,17 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'deepseek-v4-pro',
   },
   {
+    // One gateway fronting several vendors under vendor-specific paths. The
+    // gateway rejects any request without a stable `x-opencode-session` and asks
+    // clients to identify themselves, neither of which the browser may set, so
+    // the local proxy attaches both (server/plugins/llm-proxy.ts).
+    id: 'opencode',
+    label: 'OpenCode Go',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    defaultModel: 'deepseek-v4.1-flash',
+  },
+  {
     id: 'stepfun',
     label: 'StepFun',
     protocol: 'openai-compatible',

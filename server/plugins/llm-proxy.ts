@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Plugin } from 'vite';
 import { getKey, type KeyName } from '../keystore.ts';
@@ -24,6 +25,22 @@ export function llmTarget(req?: IncomingMessage): string {
   return resolveLlmProviderConfig(llmProviderForRequest(req), keyReader).baseUrl;
 }
 
+// OpenCode Go rejects requests without a stable session id (400 MissingSessionID)
+// and asks clients to identify themselves instead of a generic SDK/browser user
+// agent. Both headers are forbidden or unavailable to browser fetch, so the
+// local proxy owns them; one id per server process is enough for routing and
+// prompt-cache affinity.
+const OPENCODE_SESSION_ID = randomUUID();
+const OPENCODE_USER_AGENT = 'openchatcut-agent/1.0';
+
+export function opencodeHeaders(apiKey: string): Record<string, string> {
+  return {
+    ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+    'user-agent': OPENCODE_USER_AGENT,
+    'x-opencode-session': OPENCODE_SESSION_ID,
+  };
+}
+
 export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
   if (config.provider === 'xai-oauth') {
@@ -32,6 +49,7 @@ export function llmHeaders(req?: IncomingMessage): Record<string, string> {
     const token = xaiOauthAccessToken();
     return token ? { authorization: `Bearer ${token}` } : {};
   }
+  if (config.provider === 'opencode') return opencodeHeaders(config.apiKey);
   if (!config.apiKey) return {};
   const protocol = protocolForProvider(config.provider);
   if (protocol === 'anthropic') return { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' };
@@ -46,6 +64,13 @@ export function llmErrorMessage(status: number, req?: IncomingMessage): string {
     return status === 403
       ? 'xAI 拒绝了订阅会话的 API 访问（当前订阅档位可能未开放）。可升级订阅，或改在“设置 → Agent 模型 → xAI Grok”页配置 API Key 使用。'
       : 'xAI 订阅会话已失效。请在终端运行 grok login 重新登录，然后在“设置 → Agent 模型 → xAI Grok (订阅登录)”页点击导入。';
+  }
+  if (provider === 'opencode' && (status === 400 || status === 403)) {
+    // The gateway returns 400 for missing session headers and for region/privacy
+    // gating (DeepSeek V4.1 Flash / V4 Pro need Regions = Global in the console),
+    // so point at both instead of the generic "check your settings" copy.
+    return 'OpenCode Go 拒绝了请求。请确认订阅档位与模型可用性；'
+      + 'DeepSeek V4.1 Flash / V4 Pro 还需在控制台隐私设置中把 Regions 设为 Global。上游原始原因见终端日志。';
   }
   if (status === 401 || status === 403) {
     return `${label} 认证失败。请在“设置 → Agent 模型”中检查 API Key。`;

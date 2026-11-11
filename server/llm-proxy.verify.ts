@@ -54,6 +54,7 @@ assert.equal(llmOperationPath('cheaperinference'), '/chat/completions');
     LLM_ORCAROUTER_API_KEY: 'ork-1',
     LLM_REQUESTY_API_KEY: 'rqsty-1',
     LLM_CHEAPERINFERENCE_API_KEY: 'ci_live_1',
+    LLM_OPENCODE_API_KEY: 'oc-go-1',
     LLM_XAI_OAUTH_API_KEY: 'stale-oauth-token',
     LLM_API_KEY: 'ak-1',
   } as Record<string, string>);
@@ -74,9 +75,17 @@ assert.equal(llmOperationPath('cheaperinference'), '/chat/completions');
   assert.deepEqual(llmHeaders(reqFor('cheaperinference')), { authorization: 'Bearer ci_live_1' },
     'Cheaper Inference uses its own provider key as an OpenAI-compatible Bearer');
   assert.deepEqual(llmHeaders(reqFor('anthropic')), { 'x-api-key': 'ak-1', 'anthropic-version': '2023-06-01' }, 'anthropic x-api-key(经遗留迁移)');
+  const opencode = llmHeaders(reqFor('opencode'));
+  assert.equal(opencode.authorization, 'Bearer oc-go-1', 'OpenCode Go 使用订阅 Key 作为 Bearer');
+  assert.equal(opencode['user-agent'], 'openchatcut-agent/1.0', 'OpenCode Go 要求客户端自报 UA');
+  assert.ok(opencode['x-opencode-session'], '缺少 x-opencode-session 会被网关以 400 MissingSessionID 拒绝');
+  assert.equal(llmHeaders(reqFor('opencode'))['x-opencode-session'], opencode['x-opencode-session'],
+    '同一进程内会话 ID 保持稳定');
   assert.deepEqual(llmHeaders(reqFor('xai-oauth')), {}, 'xAI OAuth 不回退到可能失效的持久化 token');
   assert.match(llmErrorMessage(401, reqFor('gemini')), /Gemini.*设置.*API Key/, '认证错误给设置入口');
   assert.match(llmErrorMessage(429, reqFor('openai')), /额度不足.*稍后重试/, '限流错误给额度提示');
+  assert.match(llmErrorMessage(400, reqFor('opencode')), /OpenCode Go.*Regions.*Global/,
+    'OpenCode Go 400 指向订阅/区域设置而不是泛化配置');
 }
 
 const switched = expandLlmProviderPatch(new Map([['LLM_PROVIDER', 'openai']]), 'anthropic');
@@ -94,10 +103,11 @@ assert.equal(explicit.get('LLM_MODEL'), 'gpt-custom');
 assert.equal(explicit.get('LLM_BASE_URL'), 'https://relay.test/v2');
 
 const seen: Array<{ url: string; authorization?: string; provider?: string; body: string; cookie?: string }> = [];
+const opencodeSeen: Array<{ url: string; authorization?: string; session?: string; agent?: string }> = [];
 const upstream = createServer(async (req, res) => {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
-  seen.push({
+  if (!req.url?.startsWith('/go/openai/v1')) seen.push({
     url: req.url ?? '',
     authorization: typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined,
     provider: typeof req.headers['x-openchatcut-provider'] === 'string'
@@ -110,6 +120,14 @@ const upstream = createServer(async (req, res) => {
     res.writeHead(401, { 'content-type': 'application/json' });
     res.end('{"error":{"type":"vendor_auth_error","secret_debug":"raw body must stay hidden"}}');
     return;
+  }
+  if (req.url?.startsWith('/go/openai/v1')) {
+    opencodeSeen.push({
+      url: req.url,
+      authorization: typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined,
+      session: typeof req.headers['x-opencode-session'] === 'string' ? req.headers['x-opencode-session'] : undefined,
+      agent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+    });
   }
   res.writeHead(200, { 'content-type': 'text/plain' });
   res.end('{"ok":true}');
@@ -137,7 +155,10 @@ const providerProxyPort = await listen(providerProxy);
 
 try {
   const { seedKeystore } = await import('./keystore.ts');
-  seedKeystore({ LLM_ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}/v1` });
+  seedKeystore({
+    LLM_ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}/v1`,
+    LLM_OPENCODE_BASE_URL: `http://127.0.0.1:${upstreamPort}/go/openai/v1`,
+  });
   const unsupported = await fetch(`http://127.0.0.1:${providerProxyPort}/llm/messages`, {
     method: 'POST',
     headers: { 'x-openchatcut-provider': 'retired-provider' },
@@ -167,6 +188,20 @@ try {
     headers: { 'x-openchatcut-provider': 'kimi', cookie: 'session=must-not-leak' },
     body: '{"model":"openai"}',
   });
+
+  // OpenCode Go: the plugin proxy must attach the session id / UA and the vendor
+  // key, since the gateway rejects requests without them (400 MissingSessionID).
+  const opencodeCall = await fetch(`http://127.0.0.1:${providerProxyPort}/llm/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-openchatcut-provider': 'opencode' },
+    body: '{"model":"deepseek-v4.1-flash"}',
+  });
+  assert.equal(opencodeCall.status, 200);
+  assert.equal(opencodeSeen.length, 1, 'OpenCode Go 请求必须经本地代理转发');
+  assert.equal(opencodeSeen[0].url, '/go/openai/v1/chat/completions', '站点前缀由 Base URL 提供');
+  assert.equal(opencodeSeen[0].authorization, 'Bearer oc-go-1');
+  assert.equal(opencodeSeen[0].agent, 'openchatcut-agent/1.0');
+  assert.match(opencodeSeen[0].session ?? '', /^[0-9a-f-]{36}$/, '会话头必须是稳定的 UUID');
 
   assert.deepEqual(seen, [
     {

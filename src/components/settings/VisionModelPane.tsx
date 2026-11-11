@@ -35,6 +35,7 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   qwen: 'Qwen',
   glm: 'GLM',
   deepseek: 'DeepSeek',
+  opencode: 'OpenCode Go',
   stepfun: 'StepFun',
   byteplus: 'BytePlus',
   minimax: 'MiniMax',

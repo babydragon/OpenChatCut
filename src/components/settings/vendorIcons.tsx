@@ -39,10 +39,10 @@ import lmstudioSvg from '../../../assets/vendor-icons/lmstudio-color.svg?raw';
 import visionSvg from '../../../assets/vendor-icons/vision.svg?raw';
 
 export type VendorId =
-  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | 'orcarouter' | 'requesty' | 'cheaperinference'
+  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'opencode' | 'mistral' | 'openrouter' | 'orcarouter' | 'requesty' | 'cheaperinference'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
-  | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
+  | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'volcengine' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
   | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth' | 'copilot' | 'ofox' | 'fal' | 'uploadpost';
 
@@ -111,6 +111,8 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   requesty: { bg: '#34363c', mono: 'RQ', fg: '#f7f7f8' }, // Requesty gateway, no official SVG vendored yet
   uploadpost: { bg: '#4F46E5', mono: 'UP', fg: '#f7f7f8' }, // Upload-Post social publishing, no official SVG vendored yet
   cheaperinference: { bg: '#0B1F17', mono: 'CI', fg: '#34D399' }, // Cheaper Inference gateway, no official SVG vendored yet
+  opencode: { bg: '#101828', mono: 'OC', fg: '#e8f6f2' }, // OpenCode Go gateway, no official SVG vendored yet
+  volcengine: { bg: '#1664FF', mono: 'VE', fg: '#ffffff' }, // Volcengine (豆包语音), no official SVG vendored yet
 };
 
 interface VendorIconProps {
