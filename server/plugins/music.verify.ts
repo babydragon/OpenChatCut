@@ -272,3 +272,79 @@ const coverFeature = validateMusicRequest({
 assert.equal(coverFeature.coverFeatureId, 'feature-1');
 
 console.log('music.check: ok (Mureka, MiniMax, and Atlas Cloud modes)');
+
+// ── ePhone: Mureka 统一异步任务接口 ─────────────────────────────────────
+// ePhone 把 Mureka 暴露成 submit + poll；模型 id 带斜杠时走这条通道。
+{
+  const { createServer } = await import('node:http');
+  const { generateMureka, isEphoneTaskModel } = await import('./music-mureka.ts');
+
+  assert.equal(isEphoneTaskModel('mureka-9/instrumental'), true);
+  assert.equal(isEphoneTaskModel('mureka-9.5/song'), true);
+  assert.equal(isEphoneTaskModel('mureka-o2/song'), true);
+  assert.equal(isEphoneTaskModel('mureka-9'), false, '原生 Mureka 模型不带斜杠');
+  assert.equal(isEphoneTaskModel('auto'), false);
+
+  const submitted: unknown[] = [];
+  let polls = 0;
+  const mock = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    res.setHeader('Content-Type', 'application/json');
+    if (req.method === 'POST' && req.url === '/v1/task/submit') {
+      submitted.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      res.end(JSON.stringify({ id: 'task_1', status: 'queued' }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/v1/task/task_1') {
+      polls += 1;
+      res.end(JSON.stringify(polls === 1
+        ? { id: 'task_1', status: 'in_progress' }
+        : { id: 'task_1', status: 'completed', outputs: [{ url: 'https://cdn.example/bgm.mp3' }] }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/v1/task/bad') {
+      res.end(JSON.stringify({ id: 'bad', status: 'failed', error: { message: 'quota exceeded' } }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end('{}');
+  });
+  const port = await new Promise<number>((resolve) => {
+    mock.listen(0, '127.0.0.1', () => {
+      const address = mock.address();
+      resolve(typeof address === 'object' && address ? address.port : 0);
+    });
+  });
+  const options = {
+    baseUrl: `http://127.0.0.1:${port}`, apiKey: 'ephone-key', model: 'mureka-9/instrumental',
+    minimaxBaseUrl: '', minimaxApiKey: '', minimaxModel: '',
+    atlasBaseUrl: '', atlasApiKey: '', atlasModel: '',
+    soniloBaseUrl: '', soniloApiKey: '',
+  };
+  try {
+    const request = validateMusicRequest({ provider: 'mureka', prompt: 'calm piano bed', count: 1 });
+    const taskIds: string[] = [];
+    const urls = await generateMureka(options, request, async (id) => { taskIds.push(id); });
+    assert.deepEqual(urls, ['https://cdn.example/bgm.mp3']);
+    assert.deepEqual(taskIds, ['task_1']);
+    assert.deepEqual(submitted, [{
+      model: 'mureka-9/instrumental',
+      input: { n: 1, prompt: 'calm piano bed' },
+    }], 'ePhone 提交体：模型 + input，n 取用户数量');
+    assert.ok(polls >= 2, '必须轮询到 completed 才返回');
+
+    // 断点续跑：已有 task id 时不再提交，只轮询
+    const resumed = await generateMureka(options, request, async () => { throw new Error('must not resubmit'); }, 'task_1');
+    assert.deepEqual(resumed, ['https://cdn.example/bgm.mp3']);
+
+    // 失败任务把上游原因带出来
+    await assert.rejects(
+      generateMureka(options, request, async () => undefined, 'bad'),
+      /quota exceeded/,
+    );
+  } finally {
+    await new Promise<void>((resolve) => mock.close(() => resolve()));
+  }
+  console.log('music.check: ePhone Mureka task API ok');
+}

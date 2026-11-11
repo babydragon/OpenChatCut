@@ -25,6 +25,121 @@ export function pickMurekaAudioUrls(task: MurekaTask, format: MusicAudioFormat):
   return (task.choices ?? []).map((choice) => choiceUrl(choice, format)).filter((url): url is string => Boolean(url));
 }
 
+// ── ePhone AI: Mureka 统一异步任务接口 ────────────────────────────────────
+// ePhone 把 Mureka 暴露成 POST /v1/task/submit + GET /v1/task/:id，模型 id 形如
+// `mureka-9/instrumental`。原生 Mureka 的模型 id 不带斜杠，所以用模型 id 判断
+// 走哪套协议：这样设置页不用新增厂商，Base URL 指到 ePhone、模型填
+// `mureka-9/instrumental` 即可。
+const EPHONE_TASK_MODEL = /^mureka-(?:[\d.]+|o\d+)\//i;
+
+export function isEphoneTaskModel(model: string): boolean {
+  return EPHONE_TASK_MODEL.test(model.trim());
+}
+
+function ephoneInput(input: ValidMusicRequest): Record<string, unknown> {
+  const n = Math.min(3, Math.max(1, Math.round(input.count || 1)));
+  if (input.mode === 'instrumental') {
+    return {
+      n,
+      ...(input.prompt ? { prompt: input.prompt } : {}),
+      ...(input.instrumentalId ? { reference_id: input.instrumentalId } : {}),
+    };
+  }
+  if (input.mode === 'prompt-song') {
+    return {
+      n,
+      ...(input.prompt ? { prompt: input.prompt } : {}),
+      ...(input.styles?.length ? { styles: input.styles } : {}),
+      ...(input.referenceId ? { reference_id: input.referenceId } : {}),
+      ...(input.vocalId ? { vocal_id: input.vocalId } : {}),
+    };
+  }
+  if (input.mode === 'song') {
+    return {
+      n,
+      ...(input.lyrics ? { lyrics: input.lyrics } : {}),
+      ...(input.prompt ? { prompt: input.prompt } : {}),
+      ...(input.gender ? { gender: input.gender } : {}),
+      ...(input.referenceId ? { reference_id: input.referenceId } : {}),
+      ...(input.vocalId ? { vocal_id: input.vocalId } : {}),
+      ...(input.melodyId ? { melody_id: input.melodyId } : {}),
+    };
+  }
+  throw new Error(`ePhone 的 Mureka 通道暂不支持 ${input.mode}（只支持 instrumental / song / prompt-song）`);
+}
+
+function ephoneOutputUrls(task: unknown): string[] {
+  const value = task && typeof task === 'object' ? task as Record<string, unknown> : {};
+  const data = value.data && typeof value.data === 'object' ? value.data as Record<string, unknown> : value;
+  const outputs = data.outputs ?? (data.result as Record<string, unknown> | undefined)?.outputs
+    ?? data.audio_urls ?? data.urls;
+  const urls: string[] = [];
+  const push = (item: unknown): void => {
+    if (typeof item === 'string' && /^https?:\/\//i.test(item)) { urls.push(item); return; }
+    if (!item || typeof item !== 'object') return;
+    const record = item as Record<string, unknown>;
+    for (const key of ['url', 'audio_url', 'wav_url', 'flac_url', 'src']) {
+      const candidate = record[key];
+      if (typeof candidate === 'string' && candidate) { urls.push(candidate); return; }
+    }
+  };
+  if (Array.isArray(outputs)) outputs.forEach(push);
+  else push(outputs);
+  return [...new Set(urls)];
+}
+
+async function ephoneTask(baseUrl: string, apiKey: string, id: string): Promise<Record<string, unknown>> {
+  const response = await fetchWithProxy(`${baseUrl}/v1/task/${encodeURIComponent(id)}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!response.ok) throw new Error(await musicProviderError(response));
+  const body = await response.json() as Record<string, unknown>;
+  const data = body.data;
+  return data && typeof data === 'object' ? data as Record<string, unknown> : body;
+}
+
+async function generateEphoneMusic(
+  options: MusicOptions,
+  input: ValidMusicRequest,
+  onTaskAccepted: (taskId: string) => Promise<void>,
+  existingTaskId?: string,
+): Promise<string[]> {
+  const baseUrl = options.baseUrl.replace(/\/$/, '');
+  let id = existingTaskId ?? '';
+  if (!id) {
+    const response = await fetchWithProxy(`${baseUrl}/v1/task/submit`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: options.model, input: ephoneInput(input) }),
+    });
+    if (!response.ok) throw new Error(await musicProviderError(response));
+    const body = await response.json() as Record<string, unknown>;
+    const data = body.data && typeof body.data === 'object' ? body.data as Record<string, unknown> : body;
+    id = String(data.id ?? data.task_id ?? '').trim();
+    if (!id) throw new Error('ePhone did not return a task id');
+    await onTaskAccepted(id);
+  }
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    const task = await ephoneTask(baseUrl, options.apiKey, id);
+    const status = String(task.status ?? '').toLowerCase();
+    if (status === 'completed' || status === 'succeeded' || status === 'success') {
+      const urls = ephoneOutputUrls(task);
+      if (!urls.length) throw new Error('ePhone succeeded without audio outputs');
+      return urls;
+    }
+    if (status === 'failed' || status === 'error' || status === 'canceled' || status === 'cancelled') {
+      const error = task.error;
+      const message = typeof error === 'string' ? error
+        : error && typeof error === 'object' ? String((error as Record<string, unknown>).message ?? '') : '';
+      throw new Error(message || `ePhone task ${status}`);
+    }
+    await wait(2_000);
+  }
+  throw new Error('ePhone music generation timed out');
+}
+
+
 async function fetchTask(url: string, apiKey: string): Promise<MurekaTask> {
   const response = await fetchWithProxy(url, { headers: { Authorization: `Bearer ${apiKey}` } });
   if (!response.ok) throw new Error(await musicProviderError(response));
@@ -103,6 +218,10 @@ export async function generateMureka(
   onTaskAccepted: (taskId: string) => Promise<void>,
   existingTaskId?: string,
 ): Promise<string[]> {
+  // ePhone 的模型 id 带斜杠（mureka-9/instrumental），走统一任务接口。
+  if (isEphoneTaskModel(options.model)) {
+    return generateEphoneMusic(options, input, onTaskAccepted, existingTaskId);
+  }
   checkModelCompatibility(options.model, input);
   const baseUrl = options.baseUrl.replace(/\/$/, '');
   const query = input.mode === 'instrumental' ? 'instrumental' : 'song';
