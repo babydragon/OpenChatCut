@@ -4,7 +4,12 @@
 // Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
 // The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each provider call one by one
 // (Doubao audio-generation X-Api-Key / MiniMax base_resp / Gemini x-goog-api-key...).
-import { proxyDispatcher } from './outbound-proxy.ts';
+import { randomBytes } from 'node:crypto';
+import { request as httpsRequest } from 'node:https';
+import { proxyDispatcher, outboundHttpAgent } from './outbound-proxy.ts';
+import { opencodeHeaders } from './plugins/llm-proxy.ts';
+import { VOLCENGINE_WS_URL, requestHeaders as volcengineHeaders } from './plugins/volcengine-asr.ts';
+import { isEphoneTaskModel } from './plugins/music-mureka.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
@@ -242,12 +247,64 @@ const cheaperInferenceProbe: ProbeDef = {
 };
 
 
+/** OpenCode Go multiplexes vendors under `/go/{openai,anthropic,google}`, but its
+ * model catalog lives at `/go/v1/models` for every vendor prefix. */
+const opencodeProbe: ProbeDef = {
+  needs: [['LLM_OPENCODE_API_KEY']],
+  run: (get) => {
+    const root = resolveLlmBaseUrl('opencode', get('LLM_OPENCODE_BASE_URL'), AI_SDK_BASE_URL_FORMAT);
+    const catalogRoot = root
+      .replace(/\/(?:openai|anthropic)\/v1$/, '/v1')
+      .replace(/\/google\/v1beta$/, '/v1');
+    return fetchWithProxy(`${catalogRoot}/models`, {
+      signal: t(), headers: opencodeHeaders(get('LLM_OPENCODE_API_KEY')),
+    });
+  },
+  models: parseModelCatalog,
+};
+
+/**
+ * 火山流式识别没有免费只读 REST 端点，这里只做 WebSocket 升级握手就断开：
+ * 101 = 凭证可用，401/403 = Key 无效或未开通资源。不发送音频，因此不计费。
+ */
+function volcengineHandshakeProbe(url: string, headers: Record<string, string>): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const request = httpsRequest({
+      method: 'GET',
+      host: target.hostname,
+      port: target.port || 443,
+      path: `${target.pathname}${target.search}`,
+      agent: outboundHttpAgent(),
+      headers: {
+        ...headers,
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Key': randomBytes(16).toString('base64'),
+      },
+    }, (response) => {
+      response.resume();
+      resolve(new Response('', { status: response.statusCode ?? 500 }));
+    });
+    request.on('upgrade', (response, socket) => {
+      socket.destroy();
+      // 101 不在 Response.ok 的 2xx 区间内，映射成 200 让通用判定走成功分支。
+      resolve(new Response('', { status: response.statusCode === 101 ? 200 : response.statusCode ?? 500 }));
+    });
+    request.on('error', reject);
+    request.setTimeout(PROBE_TIMEOUT_MS, () => request.destroy(new Error('volcengine handshake timeout')));
+    request.end();
+  });
+}
+
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
   ...Object.fromEntries(LLM_PROVIDER_PRESETS.map((preset) => [
     `llm/${preset.id}`,
     llmProbe(preset.id),
   ])),
+  'llm/opencode': opencodeProbe,
   'llm/requesty': requestyProbe,
   'llm/cheaperinference': cheaperInferenceProbe,
   'image/openai': {
@@ -335,9 +392,16 @@ export const PROBES: Record<string, ProbeDef> = {
   },
   'music/mureka': {
     needs: [['MUREKA_API_KEY']],
-    run: (get) => fetch(`${base(get, 'MUREKA_BASE_URL', 'https://api.mureka.ai')}/v1/account/billing`, {
-      signal: t(), headers: bearer(get('MUREKA_API_KEY')),
-    }),
+    run: (get) => {
+      const root = base(get, 'MUREKA_BASE_URL', 'https://api.mureka.ai');
+      const headers = bearer(get('MUREKA_API_KEY'));
+      // ePhone 的 Mureka 模型 id 带斜杠（mureka-9/instrumental），它没有原生的
+      // /v1/account/billing，但提供 OpenAI 兼容的 /v1/models 做鉴权探测。
+      if (isEphoneTaskModel(get('MUREKA_MUSIC_MODEL'))) {
+        return fetch(`${root}/v1/models`, { signal: t(), headers });
+      }
+      return fetch(`${root}/v1/account/billing`, { signal: t(), headers });
+    },
   },
   'music/minimax': minimaxProbe,
   'music/atlas': atlasMusicProbe,
@@ -392,6 +456,15 @@ export const PROBES: Record<string, ProbeDef> = {
   'transcription/groq': groqProbe,
   'transcription/elevenlabs': elevenLabsProbe,
   'transcription/cartesia': cartesiaProbe,
+  'transcription/volcengine': {
+    needs: [['VOLCENGINE_ASR_API_KEY'], ['VOLCENGINE_ASR_APP_ID', 'VOLCENGINE_ASR_ACCESS_TOKEN']],
+    run: (get) => volcengineHandshakeProbe(VOLCENGINE_WS_URL, volcengineHeaders({
+      apiKey: get('VOLCENGINE_ASR_API_KEY'),
+      appId: get('VOLCENGINE_ASR_APP_ID'),
+      accessToken: get('VOLCENGINE_ASR_ACCESS_TOKEN'),
+      resourceId: get('VOLCENGINE_ASR_RESOURCE_ID'),
+    })),
+  },
   'sandbox/e2b': {
     needs: [['E2B_API_KEY']],
     run: (get) => fetch('https://api.e2b.dev/sandboxes', {
